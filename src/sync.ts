@@ -19,7 +19,7 @@ import * as ui from "./ui.ts";
 import { pool } from "./pool.ts";
 import { tagAll } from "./tagger.ts";
 import { TransferView } from "./view.ts";
-import { failureReason, findAndDownload, type FoundTrack } from "./fallback.ts";
+import { failure, findAndDownload, type FoundTrack, type Miss, untried } from "./fallback.ts";
 import * as unavailable from "./unavailable.ts";
 import * as yt from "./ytdlp.ts";
 
@@ -203,21 +203,23 @@ interface Found {
 }
 
 /**
- * Cerca su YouTube le tracce non scaricabili da SoundCloud. `others` mappa id -> altre
- * cartelle in cui collegare il file trovato. Restituisce id -> trovata | motivo del fallimento.
+ * Cerca altrove le tracce non scaricabili da SoundCloud. `others` mappa id -> altre
+ * cartelle in cui collegare il file trovato, `tried` id -> fonti già provate in passato.
+ * Restituisce id -> trovata | motivo del fallimento.
  */
 async function fallbackAll(
   lookups: Job[],
   others: Map<string, string[]>,
+  tried: Map<string, string[]>,
   jobsN: number,
-): Promise<Map<string, FoundTrack | string>> {
-  const outcome = new Map<string, FoundTrack | string>();
+): Promise<Map<string, FoundTrack | Miss>> {
+  const outcome = new Map<string, FoundTrack | Miss>();
   if (!lookups.length) return outcome;
   ui.print();
-  ui.ok(`Cerco su YouTube ${lookups.length} ${lookups.length === 1 ? "traccia non scaricabile" : "tracce non scaricabili"} da SoundCloud`);
-  // YouTube limita in fretta chi fa troppe richieste insieme.
+  ui.ok(`Cerco altrove ${lookups.length} ${lookups.length === 1 ? "traccia non scaricabile" : "tracce non scaricabili"} da SoundCloud`);
+  // YouTube e SoundCloud limitano in fretta chi fa troppe richieste insieme.
   const parallel = Math.min(jobsN, 3);
-  const view = new TransferView<Job>(`Ricerca su YouTube (max ${parallel})`, lookups.length).start();
+  const view = new TransferView<Job>(`Ricerca altrove (max ${parallel})`, lookups.length).start();
   try {
     await pool(
       lookups,
@@ -226,10 +228,11 @@ async function fallbackAll(
         view.add(job, jobLabel(job));
         try {
           mkdirSync(job.folder, { recursive: true });
-          const track = await findAndDownload(job.url, job.folder, (s) => {
+          const onStatus = (s: yt.Status) => {
             if (s.title) view.label(job, `${ui.dim(`${ui.truncate(basename(job.folder), 18)} /`)} ${s.title}`);
             view.update(job, s);
-          });
+          };
+          const track = await findAndDownload(job.url, job.folder, onStatus, tried.get(job.id));
           linkExtra(job, others);
           return track;
         } finally {
@@ -240,7 +243,7 @@ async function fallbackAll(
         view.done(r.status === "fulfilled");
         if (r.status === "fulfilled") outcome.set(job.id, r.value);
         else {
-          outcome.set(job.id, failureReason(r.reason));
+          outcome.set(job.id, failure(r.reason));
           log(`ERROR ricerca ${job.url}: ${(r.reason as Error).message}`);
         }
       },
@@ -326,16 +329,16 @@ function reportFound(found: Found[]): void {
   if (!found.length) return;
   const w = ui.width();
   const left = Math.floor((w - 7) * 0.45);
-  const t = ui.table(["Traccia SoundCloud", "Scaricata da YouTube"], {
-    title: chalk.cyan(`Trovate su YouTube (${found.length})`),
+  const t = ui.table(["Traccia SoundCloud", "Scaricata da"], {
+    title: chalk.cyan(`Trovate altrove (${found.length})`),
     color: chalk.cyan,
     colWidths: [left, w - 7 - left],
   });
   for (const { job, track } of found) {
-    const { info, match, score } = track;
+    const { info, match, score, source } = track;
     t.push([
       `${ui.dim(basename(job.folder) + " /")} ${info.artist ?? info.uploader} - ${info.track ?? info.title}`,
-      `${match.title} ${ui.dim(`· ${match.channel ?? "?"} · corrispondenza ${Math.round(score * 100)}%`)}\n${ui.dim(match.url)}`,
+      `${match.title} ${ui.dim(`· ${source} · ${match.channel ?? "?"} · corrispondenza ${Math.round(score * 100)}%`)}\n${ui.dim(match.url)}`,
     ]);
   }
   ui.print(t.toString());
@@ -393,6 +396,22 @@ function report(stats: Map<string, Stats>, failures: Failure[]): void {
   ui.print(ui.dim(`Log completo: ${logPath()}`));
 }
 
+/**
+ * Le playlist lette "flat" spesso non danno i titoli ("traccia 123"), e le tracce Go+ o DRM
+ * falliscono prima che yt-dlp li legga: per il registro si chiedono a SoundCloud, una volta.
+ * Restituisce quanti titoli ha aggiunto.
+ */
+export async function fillTitles(entries: Map<string, unavailable.Entry>): Promise<number> {
+  const missing = [...entries].filter(([id, e]) => !e.title || e.title === `traccia ${id}`).map(([id]) => id);
+  if (!missing.length) return 0;
+  const infos = await yt.trackInfos(missing.map((id) => `https://api.soundcloud.com/tracks/${id}`));
+  for (const [id, info] of infos) {
+    const e = entries.get(id);
+    if (e) e.title = `${info.artist ?? info.uploader ?? "?"} - ${info.track ?? info.title}`;
+  }
+  return infos.size;
+}
+
 export interface Result {
   code: number;
   added: number;
@@ -400,7 +419,7 @@ export interface Result {
   removed: number;
   /** tracce sparite da SoundCloud in attesa di conferma */
   pending: number;
-  /** tracce non scaricabili da SoundCloud trovate e scaricate da YouTube */
+  /** tracce non scaricabili da SoundCloud trovate e scaricate altrove */
   alt: number;
   /** errore che ha fermato la sync prima dei download */
   error?: string;
@@ -482,13 +501,17 @@ async function runLocked(
   }
 
   // Le tracce note come non scaricabili non si riprovano su SoundCloud (per un po'):
-  // vanno direttamente alla ricerca su YouTube, se non è già stata tentata.
-  const blocked = unavailable.load();
+  // vanno direttamente alla ricerca altrove, se ci sono fonti non ancora provate.
+  // Gli errori temporanei della sync precedente si riprovano comunque: si riscrivono alla fine.
+  const blocked = new Map([...unavailable.load()].filter(([, e]) => !e.temporary));
   const retry: Job[] = [];
   const jobs = scan.jobs.filter((job) => {
     const entry = blocked.get(job.id);
     if (!entry || mp3WithId(job.folder, job.id)) return true;
-    if (cfg.fallback && !entry.searched) retry.push(job);
+    // titolo e playlist, per mostrarla dal menu (le voci vecchie non li hanno)
+    entry.title ??= job.title;
+    entry.playlists = [...new Set([...(entry.playlists ?? []), basename(job.folder)])];
+    if (cfg.fallback && untried(entry.tried).length) retry.push(job);
     else scan.stats.get(basename(job.folder))!.unavailable++;
     return false;
   });
@@ -516,7 +539,8 @@ async function runLocked(
     for (const f of failures) if (f.permanent) add(f.job, extra.get(f.job.id) ?? []);
     for (const job of retry) add(job, []);
   }
-  const outcome = await fallbackAll(lookups, others, cfg.jobs);
+  const tried = new Map(retry.map((job) => [job.id, blocked.get(job.id)!.tried ?? []]));
+  const outcome = await fallbackAll(lookups, others, tried, cfg.jobs);
 
   // Conti e registro.
   const since = new Date().toISOString();
@@ -525,7 +549,7 @@ async function runLocked(
   for (const job of lookups) {
     const o = outcome.get(job.id);
     const wasFailure = failures.some((f) => f.job === job);
-    if (o && typeof o !== "string") {
+    if (o && "file" in o) {
       found.push({ job, track: o });
       blocked.delete(job.id);
       for (const n of folders(job)) {
@@ -533,19 +557,26 @@ async function runLocked(
         if (wasFailure) scan.stats.get(n)!.failed--;
       }
     } else if (!wasFailure) {
-      // già nota come non scaricabile: ora anche cercata, senza successo
-      blocked.set(job.id, { ...blocked.get(job.id)!, searched: true });
+      // già nota come non scaricabile: si ricordano le fonti provate ora senza successo
+      const entry = blocked.get(job.id)!;
+      blocked.set(job.id, { ...entry, tried: [...new Set([...(entry.tried ?? []), ...(o?.tried ?? [])])] });
       for (const n of folders(job)) scan.stats.get(n)!.unavailable++;
     }
   }
   for (const f of failures) {
     const o = outcome.get(f.job.id);
-    if (typeof o === "string") f.reason = `${f.reason ?? f.raw} · ${o}`;
-    if (f.permanent && (o === undefined || typeof o === "string")) {
-      blocked.set(f.job.id, { reason: f.reason ?? f.raw, since, searched: cfg.fallback });
-    }
+    if (o && "file" in o) continue;
+    if (o) f.reason = `${f.reason ?? f.raw} · ${o.reason}`;
+    blocked.set(f.job.id, {
+      reason: f.reason ?? f.raw,
+      since,
+      title: f.job.title,
+      playlists: [f.job.folder, ...(extra.get(f.job.id) ?? [])].map((d) => basename(d)),
+      ...(f.permanent ? { tried: o?.tried ?? [] } : { temporary: true }),
+    });
   }
   failures = failures.filter((f) => !found.some((x) => x.job.id === f.job.id));
+  await fillTitles(blocked);
   unavailable.save(blocked);
 
   const tagged = await tagAll(scan.jobs, cfg.jobs);

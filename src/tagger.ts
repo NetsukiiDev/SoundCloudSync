@@ -57,7 +57,7 @@ const toMeta = (info: yt.TrackInfo, source?: string | null): CacheEntry["meta"] 
   source: source ?? null,
 });
 
-/** Salva i dati di una traccia scaricata da YouTube (così il tag commento ne indica la fonte). */
+/** Salva i dati di una traccia scaricata altrove (così il tag commento ne indica la fonte). */
 export function rememberSource(info: yt.TrackInfo, source: string): void {
   const cache = loadCache();
   cache[info.id] = { meta: toMeta(info, source) };

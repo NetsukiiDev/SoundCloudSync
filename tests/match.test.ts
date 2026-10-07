@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Candidate, normalize, pickBest, score, searchQuery, type SourceTrack } from "../src/match.ts";
+import {
+  type Candidate,
+  normalize,
+  pickBest,
+  score,
+  searchQuery,
+  type SourceTrack,
+  trackName,
+  worthChecking,
+} from "../src/match.ts";
 
 // Dati veri: traccia DRM su SoundCloud e risultati di YouTube.
 const src: SourceTrack = {
@@ -60,4 +69,37 @@ test("titolo SoundCloud già nella forma 'Artista - Titolo'", () => {
   const short = score(s, yt("Kokko - Acid Storm", "Acid Pirate", 301));
   assert.ok(short >= 0.8, `senza il catalogo tra parentesi: ${short}`);
   assert.ok(full > short, "a parità di durata vince il titolo completo");
+});
+
+test("nome del brano senza artista", () => {
+  assert.equal(trackName(src), "HARDSTYLE IS BACK");
+  assert.equal(trackName({ title: "Hysta - Gabber Madness" }), "Gabber Madness");
+  assert.equal(trackName({ title: "Gabber Madness" }), "Gabber Madness");
+});
+
+// Dati veri: YouTube Music dà solo il titolo, senza artista né durata.
+test("risultati senza durata: si leggono solo quelli col nome del brano", () => {
+  const hysta: SourceTrack = { title: "Gabber Madness", uploader: "Hysta", artist: "Hysta", duration: 205.7 };
+  const bare = (title: string): Candidate => ({ id: title, title, channel: null, duration: null, url: title });
+  assert.ok(worthChecking(hysta, bare("Gabber Madness")));
+  assert.ok(!worthChecking(hysta, bare("Gabber Madness (Dr Donk Remix)")));
+  assert.ok(!worthChecking(hysta, bare("Enter The Madness")));
+  // senza durata il punteggio non basta: serve leggere i dettagli
+  assert.equal(pickBest(hysta, [bare("Gabber Madness")]), null);
+  const detailed = { ...bare("Gabber Madness"), channel: "Hysta", duration: 206 };
+  assert.ok(pickBest(hysta, [detailed])!.score > 0.95);
+});
+
+// Dati veri: su SoundCloud c'era un altro mix dello stesso brano, stessa durata circa.
+test("un mix diverso non è lo stesso brano", () => {
+  const src: SourceTrack = {
+    title: "Meet Her At The Love Parade (Hardtekkxas Mix)",
+    uploader: "Vieze Asbak",
+    artist: "Vieze Asbak， Lil Texas",
+    duration: 110,
+  };
+  const c = (title: string, channel: string): Candidate => ({ id: title, title, channel, duration: 112, url: title });
+  assert.equal(score(src, c("Meet Her At The Love Parade (Beuk Mix)", "Vieze Asbak")), 0);
+  assert.equal(score(src, c("Meet Her At The Love Parade", "Vieze Asbak")), 0);
+  assert.ok(score(src, c("Vieze Asbak & Lil Texas - Meet Her At The Love Parade (Hardtekkxas Mix)", "Vieze Asbak")) > 0.95);
 });

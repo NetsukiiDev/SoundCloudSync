@@ -211,19 +211,42 @@ export interface SearchResult {
   url: string;
 }
 
-export async function searchYouTube(query: string, count = 8): Promise<SearchResult[]> {
-  const d = JSON.parse(
-    await run(["--flat-playlist", "-J", "--no-warnings", `ytsearch${count}:${query}`], { impersonate: false }),
-  );
-  return (d.entries ?? [])
-    .filter((e: { url?: string }) => e.url)
-    .map((e: { id: string; title?: string; channel?: string; duration?: number; url: string }) => ({
-      id: e.id,
+type RawEntry = { id: string | number; title?: string; channel?: string; uploader?: string; duration?: number; url?: string };
+
+/** Risultati di una ricerca di yt-dlp ("ytsearch8:...", "scsearch8:..." o un url di ricerca). */
+async function search(target: string, impersonate: boolean, extra: string[] = []): Promise<SearchResult[]> {
+  const d = JSON.parse(await run(["--flat-playlist", "-J", "--no-warnings", ...extra, target], { impersonate }));
+  return ((d.entries ?? []) as RawEntry[])
+    .filter((e) => e.url)
+    .map((e) => ({
+      id: String(e.id),
       title: e.title ?? "",
-      channel: e.channel ?? null,
+      channel: e.channel ?? e.uploader ?? null,
       duration: e.duration ?? null,
-      url: e.url,
+      url: e.url!,
     }));
+}
+
+export const searchYouTube = (query: string, count = 8) => search(`ytsearch${count}:${query}`, false);
+
+/** Altri caricamenti dello stesso brano su SoundCloud (spesso dell'etichetta o dell'artista). */
+export const searchSoundCloud = (query: string, count = 8) => search(`scsearch${count}:${query}`, true);
+
+/** Solo i brani (audio ufficiale, canali "Topic"): titoli senza artista né durata, vedi details. */
+export const searchYouTubeMusic = (query: string, count = 8) =>
+  search(`https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`, false, ["-I", `1:${count}`]);
+
+/** Durata e artista di un singolo risultato, per le ricerche che non li danno. */
+export async function details(url: string, impersonate: boolean): Promise<SearchResult> {
+  const d = JSON.parse(await run(["-J", "--skip-download", "--no-warnings", url], { impersonate }));
+  const artists: string[] | undefined = d.artists ?? (d.artist ? [d.artist] : undefined);
+  return {
+    id: String(d.id),
+    title: d.title ?? "",
+    channel: artists?.join(", ") ?? d.channel ?? d.uploader ?? null,
+    duration: d.duration ?? null,
+    url: d.webpage_url ?? url,
+  };
 }
 
 /** Nome di file come lo farebbe yt-dlp col modello "%(uploader)s - %(title)s [%(id)s]". */

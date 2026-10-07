@@ -37,7 +37,7 @@ const NOISE = [
 const VARIANTS = [
   "remix", "live", "cover", "nightcore", "sped up", "speed up", "slowed", "reverb", "8d",
   "bass boosted", "instrumental", "karaoke", "acapella", "vip", "mashup", "bootleg",
-  "extended", "radio edit", "edit", "reverse", "hardstyle remix", "tutorial", "reaction",
+  "extended", "radio edit", "edit", "reverse", "hardstyle remix", "tutorial", "reaction", "mix",
 ];
 
 const STOPWORDS = new Set(["x", "feat", "ft", "vs", "and", "e", "the", "a", "with"]);
@@ -62,6 +62,13 @@ const variantsIn = (s: string) => {
   return new Set(VARIANTS.filter((v) => text.includes(` ${v} `)));
 };
 
+/** Versioni diverse (remix, live, slowed...) presenti solo da una parte. */
+function variantMismatch(x: string, y: string): boolean {
+  const a = variantsIn(x);
+  const b = variantsIn(y);
+  return [...a].some((v) => !b.has(v)) || [...b].some((v) => !a.has(v));
+}
+
 /** Il testo che identifica il brano: "Artista Titolo". */
 export function identity(src: SourceTrack): string {
   if (src.artist) return `${src.artist} ${src.track || src.title}`;
@@ -69,11 +76,27 @@ export function identity(src: SourceTrack): string {
   return `${src.uploader ?? ""} ${src.title}`.trim();
 }
 
+/** Solo il nome del brano, senza artista. */
+export function trackName(src: SourceTrack): string {
+  if (src.track) return src.track;
+  const i = src.title.indexOf(" - ");
+  return i >= 0 ? src.title.slice(i + 3) : src.title;
+}
+
 /** Query di ricerca, senza decorazioni né parole inutili. */
 export const searchQuery = (src: SourceTrack) => stripNoise(identity(src));
 
+const BRACKETS = /\([^)]*\)|\[[^\]]*\]/g;
+
 /** Senza le parti tra parentesi: "Acid Storm (OUT ON ACID PIRATE.12)" -> "Acid Storm". */
-const core = (s: string) => s.replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
+const core = (s: string) => s.replace(BRACKETS, " ");
+
+/**
+ * Le parentesi che dicono la versione ("(Hardtekkxas Mix)", "(Dr Donk Remix)"): a differenza
+ * di etichetta e catalogo, le loro parole devono esserci tutte, o è un altro mix.
+ */
+const versionTokens = (s: string) =>
+  new Set((s.match(BRACKETS) ?? []).filter((p) => variantsIn(p).size).flatMap((p) => [...tokens(p)]));
 
 function recallOf(want: Set<string>, have: Set<string>): number {
   return want.size ? [...want].filter((t) => have.has(t)).length / want.size : 0;
@@ -83,14 +106,11 @@ export function score(src: SourceTrack, c: Candidate): number {
   const id = identity(src);
   if (!tokens(id).size) return 0;
   const have = tokens(`${c.title} ${c.channel ?? ""}`);
+  if (recallOf(versionTokens(id), have) < 1 && versionTokens(id).size) return 0;
   // Le parentesi spesso contengono etichetta o catalogo: valgono un po' meno se mancano.
   const recall = Math.max(recallOf(tokens(id), have), recallOf(tokens(core(id)), have) * 0.95);
 
-  // Versioni diverse (remix, live, slowed...) presenti solo da una parte.
-  const a = variantsIn(identity(src));
-  const b = variantsIn(c.title);
-  const mismatched = [...new Set([...a, ...b])].filter((v) => a.has(v) !== b.has(v)).length;
-  if (mismatched) return 0;
+  if (variantMismatch(id, c.title)) return 0;
 
   // Durata: deve coincidere. Un videoclip può avere qualche secondo di intro.
   let dur = 0.5;
@@ -107,6 +127,16 @@ export function score(src: SourceTrack, c: Candidate): number {
   const bonus = [...channel].some((t) => owners.has(t)) ? 0.05 : 0;
 
   return Math.min(1, recall * 0.7 + dur * 0.3 + bonus);
+}
+
+/**
+ * Alcune ricerche (YouTube Music, Bandcamp) non danno durata né artista: vale la pena
+ * leggerli solo se il titolo contiene tutto il nome del brano e non è un'altra versione.
+ */
+export function worthChecking(src: SourceTrack, c: Candidate): boolean {
+  if (variantMismatch(identity(src), c.title)) return false;
+  const name = tokens(core(trackName(src)));
+  return name.size > 0 && recallOf(name, tokens(c.title)) === 1;
 }
 
 export function pickBest<C extends Candidate>(src: SourceTrack, candidates: C[]): Scored<C> | null {

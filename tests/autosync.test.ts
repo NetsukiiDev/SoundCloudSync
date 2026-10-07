@@ -57,7 +57,7 @@ test("notifica solo se c'è qualcosa da dire", () => {
   assert.equal(summary({ ...base, added: 1 })!.body, "1 traccia nuova");
   assert.match(summary({ ...base, added: 3, pending: 2 })!.body, /3 tracce nuove\n2 tolte da SoundCloud/);
   assert.equal(summary({ ...base, error: "boh" })!.urgent, true);
-  assert.equal(summary({ ...base, added: 4, alt: 2 })!.body, "4 tracce nuove (2 da YouTube)");
+  assert.equal(summary({ ...base, added: 4, alt: 2 })!.body, "4 tracce nuove (2 da altre fonti)");
 });
 
 test("due sync insieme: la seconda si ferma", async () => {
