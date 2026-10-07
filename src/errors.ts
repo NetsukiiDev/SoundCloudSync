@@ -16,7 +16,7 @@ const RULES: [string[], string, boolean][] = [
   [["drm"], "Protetta da DRM: non scaricabile", true],
   [["403"], "Accesso negato (403) – limite di richieste o traccia privata", false],
   [["404", "not found"], "Traccia rimossa o non trovata", true],
-  [["go+", "preview", "premium", "subscription"], "Disponibile solo con SoundCloud Go+", true],
+  [["go+", "preview", "premium", "subscription", "requested format"], "Disponibile solo con SoundCloud Go+", true],
   [["geo", "country"], "Non disponibile nel tuo paese", true],
   [["ffmpeg", "postprocess"], "Errore di conversione (ffmpeg)", false],
   [["timed out", "connection"], "Problema di rete", false],

@@ -291,24 +291,34 @@ interface DownloadOptions {
   impersonate?: boolean;
 }
 
+/**
+ * Il filtro sul formato scarta le anteprime delle tracce Go+ (`http_mp3_1_0_preview`):
+ * sono 30 secondi, ma yt-dlp le scaricherebbe senza un errore e finirebbero in libreria
+ * come se fossero il brano intero. Escluse, yt-dlp risponde "Requested format is not
+ * available" e la traccia conta come fallita, così la si cerca altrove.
+ */
+export function downloadArgs(url: string, folder: string, name?: string): string[] {
+  const output = name ? `${name.replaceAll("%", "%%")}.%(ext)s` : "%(uploader)s - %(title)s [%(id)s].%(ext)s";
+  return [
+    "--newline",
+    "--no-overwrites",
+    "-f", "bestaudio[format_id!*=preview]/best[format_id!*=preview]",
+    "-x", "--audio-format", "mp3", "--audio-quality", "0",
+    "--convert-thumbnails", "jpg", "--embed-thumbnail", "--embed-metadata",
+    "--progress-template", PROGRESS,
+    "-o", join(folder, output),
+    url,
+  ];
+}
+
 export async function download(
   url: string,
   folder: string,
   onStatus: (s: Status) => void,
   { name, impersonate = true }: DownloadOptions = {},
 ) {
-  const output = name ? `${name.replaceAll("%", "%%")}.%(ext)s` : "%(uploader)s - %(title)s [%(id)s].%(ext)s";
   await run(
-    [
-      "--newline",
-      "--no-overwrites",
-      "-f", "bestaudio/best",
-      "-x", "--audio-format", "mp3", "--audio-quality", "0",
-      "--convert-thumbnails", "jpg", "--embed-thumbnail", "--embed-metadata",
-      "--progress-template", PROGRESS,
-      "-o", join(folder, output),
-      url,
-    ],
+    downloadArgs(url, folder, name),
     {
       impersonate,
       onLine: (line) => {
