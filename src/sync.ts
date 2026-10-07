@@ -396,6 +396,22 @@ function report(stats: Map<string, Stats>, failures: Failure[]): void {
   ui.print(ui.dim(`Log completo: ${logPath()}`));
 }
 
+/**
+ * Le playlist lette "flat" spesso non danno i titoli ("traccia 123"), e le tracce Go+ o DRM
+ * falliscono prima che yt-dlp li legga: per il registro si chiedono a SoundCloud, una volta.
+ * Restituisce quanti titoli ha aggiunto.
+ */
+export async function fillTitles(entries: Map<string, unavailable.Entry>): Promise<number> {
+  const missing = [...entries].filter(([id, e]) => !e.title || e.title === `traccia ${id}`).map(([id]) => id);
+  if (!missing.length) return 0;
+  const infos = await yt.trackInfos(missing.map((id) => `https://api.soundcloud.com/tracks/${id}`));
+  for (const [id, info] of infos) {
+    const e = entries.get(id);
+    if (e) e.title = `${info.artist ?? info.uploader ?? "?"} - ${info.track ?? info.title}`;
+  }
+  return infos.size;
+}
+
 export interface Result {
   code: number;
   added: number;
@@ -486,11 +502,15 @@ async function runLocked(
 
   // Le tracce note come non scaricabili non si riprovano su SoundCloud (per un po'):
   // vanno direttamente alla ricerca altrove, se ci sono fonti non ancora provate.
-  const blocked = unavailable.load();
+  // Gli errori temporanei della sync precedente si riprovano comunque: si riscrivono alla fine.
+  const blocked = new Map([...unavailable.load()].filter(([, e]) => !e.temporary));
   const retry: Job[] = [];
   const jobs = scan.jobs.filter((job) => {
     const entry = blocked.get(job.id);
     if (!entry || mp3WithId(job.folder, job.id)) return true;
+    // titolo e playlist, per mostrarla dal menu (le voci vecchie non li hanno)
+    entry.title ??= job.title;
+    entry.playlists = [...new Set([...(entry.playlists ?? []), basename(job.folder)])];
     if (cfg.fallback && untried(entry.tried).length) retry.push(job);
     else scan.stats.get(basename(job.folder))!.unavailable++;
     return false;
@@ -547,9 +567,16 @@ async function runLocked(
     const o = outcome.get(f.job.id);
     if (o && "file" in o) continue;
     if (o) f.reason = `${f.reason ?? f.raw} · ${o.reason}`;
-    if (f.permanent) blocked.set(f.job.id, { reason: f.reason ?? f.raw, since, tried: o?.tried ?? [] });
+    blocked.set(f.job.id, {
+      reason: f.reason ?? f.raw,
+      since,
+      title: f.job.title,
+      playlists: [f.job.folder, ...(extra.get(f.job.id) ?? [])].map((d) => basename(d)),
+      ...(f.permanent ? { tried: o?.tried ?? [] } : { temporary: true }),
+    });
   }
   failures = failures.filter((f) => !found.some((x) => x.job.id === f.job.id));
+  await fillTitles(blocked);
   unavailable.save(blocked);
 
   const tagged = await tagAll(scan.jobs, cfg.jobs);

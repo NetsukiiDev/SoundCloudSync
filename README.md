@@ -42,6 +42,9 @@ Dal menu si scelgono:
 - **Tracce tolte da SoundCloud**: cosa fare quando una traccia sparisce da una playlist:
   `chiedi` (predefinito, poi cestino), `cestino`, `elimina`, `mai`.
 - **Cerca altrove i brani non scaricabili**: vedi sotto (attivo di default).
+- **Tracce non scaricate**: elenco con playlist, motivo e fonti già provate. Da qui si possono
+  riprovare tutte o solo alcune: escono dal registro e parte una sync, che le riscarica da
+  SoundCloud e poi le cerca su tutte le altre fonti.
 - **Sync automatica**: all'accesso al PC (2 minuti dopo il login) e/o periodica (ogni 1–24 ore,
   a orari fissi). Gira in background e manda una notifica solo se c'è qualcosa da dire.
 
@@ -118,7 +121,7 @@ fallite con il motivo.
 | --- | --- |
 | `~/.config/soundcloud-sync/config.json` | impostazioni |
 | `~/.cache/soundcloud-sync/last-run.log` | log tecnico dell'ultima sync |
-| `~/.cache/soundcloud-sync/unavailable.json` | tracce non scaricabili e fonti già provate, per 30 giorni |
+| `~/.cache/soundcloud-sync/unavailable.json` | tracce non scaricate: quelle non scaricabili (saltate per 30 giorni, con le fonti già provate) e gli errori temporanei dell'ultima sync |
 
 ## Struttura
 

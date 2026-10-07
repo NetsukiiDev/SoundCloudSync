@@ -1,5 +1,6 @@
-// Tracce che non si possono scaricare per motivi permanenti (DRM, Go+, rimosse...):
-// vengono saltate per un po', così la sync automatica non le riprova e notifica ogni volta.
+// Tracce non scaricate. Quelle per motivi permanenti (DRM, Go+, rimosse...) vengono saltate
+// per un po', così la sync automatica non le riprova e notifica ogni volta. Quelle per errori
+// temporanei (rete, 403) si riprovano a ogni sync: sono qui solo per vederle dal menu.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,6 +14,12 @@ export interface Entry {
   since: string; // ISO
   /** fonti alternative già provate senza successo (vedi fallback.ts) */
   tried?: string[];
+  /** errore temporaneo dell'ultima sync: non blocca niente */
+  temporary?: boolean;
+  /** "Artista - Titolo", per mostrarla dal menu */
+  title?: string;
+  /** cartelle (playlist) che la contengono */
+  playlists?: string[];
   /** formato vecchio: true = già cercata su YouTube */
   searched?: boolean;
 }
@@ -43,4 +50,11 @@ export function load(now = Date.now()): Map<string, Entry> {
 export function save(map: Map<string, Entry>): void {
   mkdirSync(cacheDir(), { recursive: true });
   writeFileSync(path(), JSON.stringify(Object.fromEntries(map), null, 2) + "\n");
+}
+
+/** Toglie delle tracce dal registro: la prossima sync le riprova da capo, su tutte le fonti. */
+export function forget(ids: Iterable<string>): void {
+  const map = load();
+  for (const id of ids) map.delete(id);
+  save(map);
 }
