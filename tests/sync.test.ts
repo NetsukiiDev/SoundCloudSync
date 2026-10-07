@@ -6,7 +6,7 @@ import type { PruneMode } from "../src/config.ts";
 import { trashDir } from "../src/library.ts";
 import { pool } from "../src/pool.ts";
 import { newStats, plan, prune, type Scan } from "../src/sync.ts";
-import { parseLine, titleFromUrl } from "../src/ytdlp.ts";
+import { downloadArgs, parseLine, titleFromUrl } from "../src/ytdlp.ts";
 import { sandbox, touch } from "./helpers.ts";
 
 let dir: string;
@@ -104,6 +104,11 @@ test("parseLine legge l'avanzamento di yt-dlp", () => {
   assert.equal(parseLine("[ExtractAudio] Destination: x.mp3")!.text, "converto in mp3");
   assert.equal(parseLine("[info] qualcosa"), null);
   assert.equal(parseLine("[download] Destination: /m/Acid/Arcane - 303 [101] [2287].m4a")!.title, "Arcane - 303 [101]");
+});
+
+test("il formato chiesto a yt-dlp scarta le anteprime di 30 secondi", () => {
+  const args = downloadArgs("https://api-v2.soundcloud.com/tracks/1669954107", "/m/HPM");
+  assert.equal(args[args.indexOf("-f") + 1], "bestaudio[format_id!*=preview]/best[format_id!*=preview]");
 });
 
 test("titolo ricavato dall'url", () => {

@@ -7,6 +7,7 @@ import { setPrint } from "../src/ui.ts";
 export function sandbox(): string {
   const dir = mkdtempSync(join(tmpdir(), "scsync-"));
   process.env.HOME = dir;
+  process.env.USERPROFILE = dir; // su Windows homedir() legge questo, non HOME
   process.env.XDG_DATA_HOME = join(dir, "share");
   setPrint(() => {});
   return dir;

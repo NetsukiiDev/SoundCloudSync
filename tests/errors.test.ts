@@ -20,3 +20,11 @@ test("DRM è permanente, 403 no", () => {
   assert.equal(explain("ERROR: [soundcloud] 1: This video is DRM protected").permanent, true);
   assert.equal(explain("ERROR: [soundcloud] 1: HTTP Error 403: Forbidden").permanent, false);
 });
+
+test("solo anteprima: il formato non disponibile è permanente", () => {
+  const { reason, permanent } = explain(
+    "ERROR: [soundcloud] 1669954107: Requested format is not available. Use --list-formats for a list of available formats",
+  );
+  assert.equal(reason, "Disponibile solo con SoundCloud Go+");
+  assert.equal(permanent, true);
+});
