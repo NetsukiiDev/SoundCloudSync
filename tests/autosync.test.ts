@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { describe, formatWhen, loginTimerUnit, periodicTimerUnit, serviceUnit } from "../src/autosync.ts";
 import { cacheDir, defaults } from "../src/config.ts";
 import { summary } from "../src/notify.ts";
@@ -30,7 +31,10 @@ test("timer periodico: orari fissi e recupero delle sync perse", () => {
 
 test("service: lancia questa copia del programma con --notify", () => {
   const s = serviceUnit();
-  assert.match(s, /ExecStart=\S*node \S*\/src\/cli\.ts sync --notify/);
+  // Toglie le virgolette e l'escape dei backslash, così il confronto vale anche con i percorsi Windows
+  const exec = s.match(/^ExecStart=(.*)$/m)?.[1].replace(/"/g, "").replaceAll("\\\\", "\\");
+  const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+  assert.equal(exec, `${process.execPath} ${cli} sync --notify`);
   assert.match(s, /Type=oneshot/);
 });
 
