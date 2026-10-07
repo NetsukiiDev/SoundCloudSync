@@ -26,7 +26,7 @@ export interface Config {
   autostart: boolean;
   /** sync automatica ogni N ore (0 = disattivata) */
   autosync: number;
-  /** cerca su YouTube le tracce non scaricabili da SoundCloud */
+  /** cerca altrove (vedi fallback.ts) le tracce non scaricabili da SoundCloud */
   fallback: boolean;
 }
 

@@ -13,8 +13,17 @@ export interface TrackMeta {
   genre: string | null;
   date: string | null; // YYYYMMDD
   url: string;
-  /** se il file viene da YouTube (traccia non scaricabile da SoundCloud) */
+  /** url da cui viene il file, se la traccia non era scaricabile da SoundCloud */
   source?: string | null;
+}
+
+/** Nome della fonte alternativa, dall'url. */
+export function sourceName(url: string): string {
+  const host = URL.canParse(url) ? new URL(url).hostname : "";
+  if (host === "music.youtube.com") return "YouTube Music";
+  if (host.endsWith("soundcloud.com")) return "SoundCloud (altro caricamento)";
+  if (host.endsWith("bandcamp.com")) return "Bandcamp";
+  return "YouTube";
 }
 
 export interface Placement {
@@ -85,7 +94,7 @@ export function desiredTags(meta: TrackMeta, place: Placement): Tags {
     track: String(place.index),
     date: meta.date?.slice(0, 4) ?? "",
     genre: meta.genre?.trim() ?? "",
-    comment: meta.source ? `Scaricata da YouTube: ${meta.source} (originale: ${meta.url})` : meta.url,
+    comment: meta.source ? `Scaricata da ${sourceName(meta.source)}: ${meta.source} (originale: ${meta.url})` : meta.url,
     compilation: realAlbum ? "" : "1",
   };
 }

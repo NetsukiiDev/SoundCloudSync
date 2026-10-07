@@ -10,7 +10,7 @@ export function summary(r: Result): { title: string; body: string; urgent: boole
   if (r.error) return { title: "SoundCloud Sync: errore", body: r.error, urgent: true };
   const parts = [];
   if (r.added) {
-    const alt = r.alt ? ` (${r.alt} da YouTube)` : "";
+    const alt = r.alt ? ` (${r.alt} da altre fonti)` : "";
     parts.push(`${r.added} ${r.added === 1 ? "traccia nuova" : "tracce nuove"}${alt}`);
   }
   if (r.removed) parts.push(`${r.removed} rimoss${r.removed === 1 ? "a" : "e"}`);

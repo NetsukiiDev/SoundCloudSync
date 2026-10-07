@@ -41,27 +41,39 @@ Dal menu si scelgono:
 - **Download paralleli**: meno download = meno blocchi da SoundCloud.
 - **Tracce tolte da SoundCloud**: cosa fare quando una traccia sparisce da una playlist:
   `chiedi` (predefinito, poi cestino), `cestino`, `elimina`, `mai`.
-- **Cerca su YouTube i brani non scaricabili**: vedi sotto (attivo di default).
+- **Cerca altrove i brani non scaricabili**: vedi sotto (attivo di default).
 - **Sync automatica**: all'accesso al PC (2 minuti dopo il login) e/o periodica (ogni 1–24 ore,
   a orari fissi). Gira in background e manda una notifica solo se c'è qualcosa da dire.
 
-### Brani non scaricabili: ricerca su YouTube
+### Brani non scaricabili: ricerca altrove
 
 Alcune tracce SoundCloud non si possono scaricare (DRM, solo Go+, blocco geografico). Per
 queste il programma:
 
 1. legge da SoundCloud artista, titolo e durata (disponibili anche senza audio);
-2. cerca su YouTube e dà un punteggio a ogni risultato (`src/match.ts`): parole del titolo in
-   comune, durata uguale (tolleranza di qualche secondo per le intro dei videoclip), canale
-   dell'artista o dell'etichetta. Scarta le versioni diverse (remix, live, slowed, nightcore…)
-   presenti solo da una parte. **Sotto l'80% non scarica niente**: meglio un brano mancante che
-   uno sbagliato;
-3. scarica in mp3 con lo stesso nome e ID della traccia SoundCloud, poi riscrive i tag con quelli
-   di SoundCloud. Nel tag commento resta la fonte (`Scaricata da YouTube: …`).
+2. cerca lo stesso brano in queste fonti, in ordine, fermandosi alla prima che lo ha:
 
-A fine sync la tabella **Trovate su YouTube** mostra per ogni traccia il video scelto, il canale e
-la percentuale di corrispondenza, per controllare. Le tracce non trovate vengono registrate e non
-si cercano di nuovo finché non scade il registro (30 giorni).
+   | Fonte | Perché |
+   | --- | --- |
+   | SoundCloud | un altro caricamento (etichetta, artista, compilation) spesso è scaricabile |
+   | YouTube Music | audio ufficiale (canali "Topic"), senza le intro dei videoclip |
+   | YouTube | il catalogo più grande |
+   | Bandcamp | uscite di etichette indipendenti (ricerca con l'API pubblica del sito) |
+
+3. dà un punteggio a ogni risultato (`src/match.ts`): parole del titolo in comune, durata
+   uguale (tolleranza di qualche secondo per le intro dei videoclip), canale dell'artista o
+   dell'etichetta. Scarta le versioni diverse (remix, live, slowed, nightcore…) presenti solo
+   da una parte, e un mix diverso dello stesso brano (`(Beuk Mix)` non vale per
+   `(Hardtekkxas Mix)`). Se una ricerca non dà la durata (YouTube Music, Bandcamp), la legge per
+   i risultati col titolo giusto. **Sotto l'80% non scarica niente**: meglio un brano mancante
+   che uno sbagliato;
+4. scarica in mp3 con lo stesso nome e ID della traccia SoundCloud, poi riscrive i tag con quelli
+   di SoundCloud. Nel tag commento resta la fonte (`Scaricata da YouTube Music: …`).
+
+A fine sync la tabella **Trovate altrove** mostra per ogni traccia il risultato scelto, la fonte,
+il canale e la percentuale di corrispondenza, per controllare. Per le tracce non trovate il
+registro ricorda quali fonti hanno risposto senza risultato: non si richiedono per 30 giorni.
+Le fonti che hanno dato errore (rete, 403) si riprovano alla sync successiva.
 
 ### Sync automatica
 
@@ -106,7 +118,7 @@ fallite con il motivo.
 | --- | --- |
 | `~/.config/soundcloud-sync/config.json` | impostazioni |
 | `~/.cache/soundcloud-sync/last-run.log` | log tecnico dell'ultima sync |
-| `~/.cache/soundcloud-sync/unavailable.json` | tracce non scaricabili, saltate per 30 giorni |
+| `~/.cache/soundcloud-sync/unavailable.json` | tracce non scaricabili e fonti già provate, per 30 giorni |
 
 ## Struttura
 
@@ -117,7 +129,8 @@ fallite con il motivo.
 | `src/sync.ts` | lettura playlist, download paralleli con vista live, pulizia, riepilogo |
 | `src/ytdlp.ts` | chiamate a yt-dlp e lettura del suo avanzamento |
 | `src/library.ts` | file locali: ID tracce, hard link, spostamenti, cestino |
-| `src/fallback.ts` | ricerca e download da YouTube dei brani non scaricabili |
+| `src/fallback.ts` | fonti alternative: ricerca e download dei brani non scaricabili |
+| `src/bandcamp.ts` | ricerca su Bandcamp |
 | `src/match.ts` | punteggio di corrispondenza tra traccia SoundCloud e risultati di ricerca |
 | `src/view.ts` | vista live dei lavori in parallelo |
 | `src/autosync.ts` | timer systemd della sync automatica |

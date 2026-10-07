@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanArtist, cleanTitle, desiredTags, splitTitle, type TrackMeta } from "../src/tags.ts";
+import { cleanArtist, cleanTitle, desiredTags, sourceName, splitTitle, type TrackMeta } from "../src/tags.ts";
 
 const meta = (title: string, more: Partial<TrackMeta> = {}): TrackMeta => ({
   id: "1", title, uploader: "Etichetta", artist: null, track: null, album: null, genre: null,
@@ -60,7 +60,11 @@ test("album: quello vero se c'è, altrimenti la playlist come compilation", () =
   assert.equal(real.compilation, "");
 });
 
-test("commento: link originale, e la fonte se viene da YouTube", () => {
+test("commento: link originale, e la fonte se viene da altrove", () => {
   assert.equal(desiredTags(meta("A - B"), { playlist: "P", index: 1 }).comment, "https://soundcloud.com/x/y");
   assert.match(desiredTags(meta("A - B", { source: "https://youtu.be/z" }), { playlist: "P", index: 1 }).comment, /^Scaricata da YouTube: https:\/\/youtu\.be\/z/);
+  assert.equal(sourceName("https://music.youtube.com/watch?v=MDmCYcVLMcg"), "YouTube Music");
+  assert.equal(sourceName("https://www.youtube.com/watch?v=x"), "YouTube");
+  assert.equal(sourceName("https://ratus.bandcamp.com/track/heroine"), "Bandcamp");
+  assert.equal(sourceName("https://api.soundcloud.com/tracks/1"), "SoundCloud (altro caricamento)");
 });

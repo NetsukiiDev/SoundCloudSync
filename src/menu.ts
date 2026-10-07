@@ -271,9 +271,10 @@ export async function menu(cfg: Config): Promise<number> {
             { name: `Tracce tolte da SoundCloud ${ui.dim(`(${cfg.prune})`)}`, value: "prune" },
             { name: `Sync automatica ${ui.dim(`(${auto.describe(cfg)})`)}`, value: "auto" },
             {
-              name: `Cerca su YouTube i brani non scaricabili ${ui.dim(`(${cfg.fallback ? "sì" : "no"})`)}`,
+              name: `Cerca altrove i brani non scaricabili ${ui.dim(`(${cfg.fallback ? "sì" : "no"})`)}`,
               value: "fallback",
-              description: "DRM, Go+, blocchi: scarica da YouTube solo se la corrispondenza è sicura",
+              description:
+                "DRM, Go+, blocchi: cerca su SoundCloud, YouTube Music, YouTube e Bandcamp e scarica solo se la corrispondenza è sicura",
             },
             { name: "Esci", value: "quit" },
           ],
@@ -293,7 +294,7 @@ export async function menu(cfg: Config): Promise<number> {
       else if (choice === "fallback") {
         cfg.fallback = !cfg.fallback;
         save(cfg);
-        notify.ok(`Ricerca su YouTube ${cfg.fallback ? "attivata" : "disattivata"}.`);
+        notify.ok(`Ricerca altrove ${cfg.fallback ? "attivata" : "disattivata"}.`);
       }
       else return 0;
     }
